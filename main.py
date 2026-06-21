@@ -1,0 +1,67 @@
+from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
+import models
+from database import engine, SessionLocal, Base
+from auth import hash_password,verify_password
+from auth_token import create_token
+ 
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:5174", "http://localhost:5175"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+@app.get("/jobs")
+def get_jobs(db: Session = Depends(get_db)):
+    return db.query(models.Job).all()
+
+@app.post("/jobs")
+def add_job(job: dict, db: Session = Depends(get_db)):
+    new_job = models.Job(
+        company=job["company"],
+        role=job["role"],
+        status=job["status"]
+    )
+    db.add(new_job)
+    db.commit()
+    db.refresh(new_job)
+    return new_job
+@app.post("/signup")
+def signup(user: dict,db: Session = Depends(get_db)):
+    existing_user = db.query(models.User).filter(models.User.email == user["email"]).first()
+    if existing_user:
+        return{"error":"Email already registered"}
+    
+    new_user = models.User(
+        name = user["name"],
+        email = user["email"],
+        password = hash_password(user["password"])
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    return{"message":"signup successful"}
+
+@app.post("/login")
+def login(user: dict,db: Session=(Depends(get_db))):
+    db_user = db.query(models.User).filter(models.User.email == user["email"]).first()
+    if not db_user:
+        return{"error":"User not found"}
+    if not verify_password(user["password"],db_user.password):
+        return{"error": "Incorrect password"}
+        
+    token = create_token({"user_id": db_user.id})
+    return {"token" : token,"name": db_user.name}
