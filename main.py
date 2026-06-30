@@ -1,5 +1,7 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends,UploadFile,File,Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from ai_analysis import extract_text_from_pdf, analyze_resume, improve_resume, generate_pdf
 from sqlalchemy.orm import Session
 import models
 from database import engine, SessionLocal, Base
@@ -65,3 +67,26 @@ def login(user: dict,db: Session=(Depends(get_db))):
         
     token = create_token({"user_id": db_user.id})
     return {"token" : token,"name": db_user.name}
+
+@app.post("/analyze")
+async def analyze(
+    resume : UploadFile = File(...),
+    job_description: str = Form(...)
+):
+    resume_text = extract_text_from_pdf(resume.file)
+    analysis = analyze_resume(job_description,resume_text)
+    return analysis
+@app.post("/improve-resume")  
+async def improve(
+    resume : UploadFile = File(...),
+    job_description: str = Form(...),
+    candidate_name: str = Form(...)
+):
+    resume_text = extract_text_from_pdf(resume.file)
+    improved_text = improve_resume(job_description,resume_text,candidate_name)
+    pdf_Buffer = generate_pdf(improved_text,candidate_name)
+    return StreamingResponse(
+        pdf_Buffer,
+        media_type= "application/pdf",
+        headers={"Content-Disposition":"attachment ; filename: improved_resume.pdf"}
+    )
