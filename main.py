@@ -26,6 +26,10 @@ def get_db():
     finally:
         db.close()
 
+@app.get("/")
+def root():
+    return {"message": "Backend is running"}
+
 @app.get("/jobs")
 def get_jobs(db: Session = Depends(get_db)):
     return db.query(models.Job).all()
